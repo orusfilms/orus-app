@@ -11,6 +11,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icone/icona-192.png">
 <link rel="apple-touch-icon" href="icone/apple-touch-icon.png">
+<!-- App Orus v2 (16/11/2026): + notifiche sul telefono (Firebase Cloud Messaging) -->
 <style>
   html, body { margin: 0; height: 100%; background: #0E0E0E; overflow: hidden; }
   #piattaforma { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; background: #F5F3F0; }
@@ -22,6 +23,15 @@
   #caricamento p { margin-top: 18px; letter-spacing: .25em; text-transform: uppercase; font-size: 11px; }
   #caricamento.nascosto { opacity: 0; pointer-events: none; }
   @keyframes pulsa { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+  /* Striscia per attivare le notifiche: Android chiede il permesso solo dopo un tocco su questa pagina */
+  #striscia-notifiche { position: fixed; left: 10px; right: 10px; bottom: calc(70px + env(safe-area-inset-bottom)); z-index: 3;
+    display: none; align-items: center; gap: 10px; background: #0E0E0E; color: #fff; border-radius: 12px; padding: 12px 12px 12px 16px;
+    font: 14px/1.35 system-ui, sans-serif; box-shadow: 0 10px 30px rgba(0,0,0,.35); border-left: 3px solid #C0262C; }
+  #striscia-notifiche.visibile { display: flex; }
+  #striscia-notifiche span { flex: 1; }
+  #striscia-notifiche button { border: 0; border-radius: 8px; padding: 10px 14px; font: inherit; font-weight: 600; }
+  #attiva-notifiche { background: #C0262C; color: #fff; }
+  #chiudi-striscia { background: transparent; color: #aaa; padding: 10px 6px !important; }
 </style>
 </head>
 <body>
@@ -33,12 +43,33 @@
 <!-- credentialless = la piattaforma si apre senza gli account Google del telefono (come in incognito) -->
 <iframe id="piattaforma" title="Piattaforma Orus" allow="clipboard-write" credentialless></iframe>
 
+<div id="striscia-notifiche" role="dialog" aria-label="Notifiche">
+  <span>Tocca <b>Attiva</b> e poi <b>Consenti</b> per ricevere le notifiche di Orus su questo telefono.</span>
+  <button id="attiva-notifiche">Attiva</button><button id="chiudi-striscia" aria-label="Chiudi">✕</button>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js"></script>
 <script>
   // ===== LINK DELLA PIATTAFORMA - inizio =====
   // Incollare qui il link /exec della piattaforma (lo stesso che si apre dal browser).
-  var URL_PIATTAFORMA = 'https://script.google.com/macros/s/AKfycbxEqoYtKs7sFAA12vlzfJ_s5rKCxa0FTsgBjd3Qs_xt9DhnIn-N0OZaz8w3UeXfG5KR/exec';
+  var URL_PIATTAFORMA = 'INCOLLA_QUI_IL_LINK_EXEC';
   // ===== LINK DELLA PIATTAFORMA - fine =====
 
+  // ===== FIREBASE - inizio =====
+  // Dati PUBBLICI dell'app web Firebase (console Firebase > Impostazioni progetto > Le tue app > Configurazione SDK)
+  // e chiave VAPID (Impostazioni progetto > Cloud Messaging > Certificati push web > Coppia di chiavi). Non sono segreti.
+  var FIREBASE_CONFIG = {
+    apiKey: 'AIzaSyD7XGGYNlaaF5Bc4ryCz6b6KlY3WCwX54g',
+    authDomain: 'orus-piattaforma-app.firebaseapp.com',
+    projectId: 'orus-piattaforma-app',
+    messagingSenderId: '977627294696',
+    appId: '1:977627294696:web:a89d6969aedd912899d25d'
+  };
+  var VAPID_KEY = 'BMWz1YvymL89FOUMFPqOF1Yh77LPVUJVbGhhTH5n5oXunFGkJe-Z-idRXjvvZKtcz6IxvZtgzxvCxS9TUDlhAMo';
+  // ===== FIREBASE - fine =====
+
+  var APP_URL = location.origin + location.pathname.replace(/index\.html$/, '');
   var frame = document.getElementById('piattaforma');
   var schermo = document.getElementById('caricamento');
   frame.addEventListener('load', function () { schermo.classList.add('nascosto'); });
@@ -48,6 +79,43 @@
   var PREFISSO = 'orus_app_', CHIAVI = ['orus_sessione', 'orus_dispositivo', 'orus_email'];
   function leggi(k) { try { return localStorage.getItem(PREFISSO + k) || ''; } catch (e) { return ''; } }
   function scrivi(k, v) { try { if (v === null) localStorage.removeItem(PREFISSO + k); else localStorage.setItem(PREFISSO + k, v); } catch (e) {} }
+
+  // ----- Notifiche (v2) -----
+  var PIATTAFORMA = null, ORIGINE_PIATTAFORMA = ''; // la pagina della piattaforma che ha scritto all'app
+  function mandaAllaPiattaforma(msg) { try { if (PIATTAFORMA) PIATTAFORMA.postMessage(msg, ORIGINE_PIATTAFORMA); } catch (e) {} }
+  function pushConfigurato() { return FIREBASE_CONFIG.apiKey.indexOf('INCOLLA') === -1 && VAPID_KEY.indexOf('INCOLLA') === -1 && !!window.firebase; }
+  function statoPush() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return 'nonsupportato';
+    if (!pushConfigurato()) return 'nonconfigurato';
+    return Notification.permission; // granted / default / denied
+  }
+  function nomeTelefono() {
+    var ua = navigator.userAgent, m = /Android [\d.]+; ([^;)]+)/.exec(ua);
+    if (m && !/^K$/.test(m[1])) return m[1].trim();
+    if (/iPhone/.test(ua)) return 'iPhone';
+    if (/Android/.test(ua)) return 'Android';
+    return 'Telefono';
+  }
+  function ottieniToken() {
+    if (!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+    return navigator.serviceWorker.ready.then(function (reg) {
+      return firebase.messaging().getToken({ vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    });
+  }
+  function rispondiStato() {
+    var s = statoPush();
+    if (s !== 'granted') { mandaAllaPiattaforma({ orus: 'push', stato: s }); return; }
+    ottieniToken().then(function (t) {
+      mandaAllaPiattaforma({ orus: 'push', stato: t ? 'granted' : 'errore', token: t || '', app: APP_URL, nome: nomeTelefono() });
+    }).catch(function (e) { mandaAllaPiattaforma({ orus: 'push', stato: 'errore', errore: String((e && e.message) || e) }); });
+  }
+  var striscia = document.getElementById('striscia-notifiche');
+  document.getElementById('attiva-notifiche').onclick = function () {
+    striscia.classList.remove('visibile');
+    Notification.requestPermission().then(function () { rispondiStato(); });
+  };
+  document.getElementById('chiudi-striscia').onclick = function () { striscia.classList.remove('visibile'); mandaAllaPiattaforma({ orus: 'push', stato: statoPush() }); };
+
   window.addEventListener('message', function (ev) {
     if (!/^https:\/\/[a-z0-9.-]+\.googleusercontent\.com$/i.test(ev.origin)) return; // solo dalla piattaforma
     var d = ev.data || {};
@@ -56,10 +124,26 @@
       ev.source.postMessage({ orus: 'memoria', dati: dati }, ev.origin);
     } else if (d.orus === 'salva' && CHIAVI.indexOf(d.chiave) !== -1) {
       scrivi(d.chiave, d.valore === null ? null : String(d.valore));
+    } else if (d.orus === 'push-stato') {
+      PIATTAFORMA = ev.source; ORIGINE_PIATTAFORMA = ev.origin; rispondiStato();
+    } else if (d.orus === 'push-attiva') {
+      PIATTAFORMA = ev.source; ORIGINE_PIATTAFORMA = ev.origin;
+      var s = statoPush();
+      if (s === 'default') striscia.classList.add('visibile'); else rispondiStato();
     }
   });
+  // Notifica toccata con l'app già aperta: il service worker chiede di andare alla sezione giusta
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', function (ev) {
+      var d = ev.data || {};
+      if (d.orus === 'vai' && d.vai) mandaAllaPiattaforma({ orus: 'vai', vai: d.vai });
+    });
+  }
 
-  frame.src = URL_PIATTAFORMA + (URL_PIATTAFORMA.indexOf('?') === -1 ? '?' : '&') + 'app=' + encodeURIComponent(location.origin);
+  var vai = new URLSearchParams(location.search).get('vai') || '';
+  frame.src = URL_PIATTAFORMA + (URL_PIATTAFORMA.indexOf('?') === -1 ? '?' : '&') + 'app=' + encodeURIComponent(location.origin) +
+    (vai ? '&vai=' + encodeURIComponent(vai) : '');
+  if (vai && history.replaceState) history.replaceState(null, '', APP_URL); // così ricaricando non ci torna
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(function () {});
