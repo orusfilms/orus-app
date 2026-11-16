@@ -30,7 +30,8 @@
   <p>Orus Distribution</p>
 </div>
 
-<iframe id="piattaforma" title="Piattaforma Orus" allow="clipboard-write"></iframe>
+<!-- credentialless = la piattaforma si apre senza gli account Google del telefono (come in incognito) -->
+<iframe id="piattaforma" title="Piattaforma Orus" allow="clipboard-write" credentialless></iframe>
 
 <script>
   // ===== LINK DELLA PIATTAFORMA - inizio =====
@@ -43,7 +44,22 @@
   frame.addEventListener('load', function () { schermo.classList.add('nascosto'); });
   // Se dopo 25 secondi non ha ancora caricato, toglie comunque la schermata di avvio
   setTimeout(function () { schermo.classList.add('nascosto'); }, 25000);
-  frame.src = URL_PIATTAFORMA;
+  // L'app conserva sessione e dispositivo della piattaforma (che "in incognito" li perderebbe a ogni apertura)
+  var PREFISSO = 'orus_app_', CHIAVI = ['orus_sessione', 'orus_dispositivo', 'orus_email'];
+  function leggi(k) { try { return localStorage.getItem(PREFISSO + k) || ''; } catch (e) { return ''; } }
+  function scrivi(k, v) { try { if (v === null) localStorage.removeItem(PREFISSO + k); else localStorage.setItem(PREFISSO + k, v); } catch (e) {} }
+  window.addEventListener('message', function (ev) {
+    if (!/^https:\/\/[a-z0-9.-]+\.googleusercontent\.com$/i.test(ev.origin)) return; // solo dalla piattaforma
+    var d = ev.data || {};
+    if (d.orus === 'chiedi') {
+      var dati = {}; CHIAVI.forEach(function (k) { var v = leggi(k); if (v) dati[k] = v; });
+      ev.source.postMessage({ orus: 'memoria', dati: dati }, ev.origin);
+    } else if (d.orus === 'salva' && CHIAVI.indexOf(d.chiave) !== -1) {
+      scrivi(d.chiave, d.valore === null ? null : String(d.valore));
+    }
+  });
+
+  frame.src = URL_PIATTAFORMA + (URL_PIATTAFORMA.indexOf('?') === -1 ? '?' : '&') + 'app=' + encodeURIComponent(location.origin);
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(function () {});
