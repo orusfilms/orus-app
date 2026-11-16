@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Orus</title>
+<meta name="theme-color" content="#0E0E0E">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icone/icona-192.png">
+<link rel="apple-touch-icon" href="icone/apple-touch-icon.png">
+<style>
+  html, body { margin: 0; height: 100%; background: #0E0E0E; overflow: hidden; }
+  #piattaforma { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; background: #F5F3F0; }
+  #caricamento {
+    position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background: #0E0E0E; color: #bbb; font: 14px/1.4 system-ui, sans-serif; transition: opacity .4s; z-index: 2;
+  }
+  #caricamento img { width: 120px; animation: pulsa 1.6s ease-in-out infinite; }
+  #caricamento p { margin-top: 18px; letter-spacing: .25em; text-transform: uppercase; font-size: 11px; }
+  #caricamento.nascosto { opacity: 0; pointer-events: none; }
+  @keyframes pulsa { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
+</style>
+</head>
+<body>
+<div id="caricamento">
+  <img src="icone/icona-512.png" alt="">
+  <p>Orus Distribution</p>
+</div>
+
+<iframe id="piattaforma" title="Piattaforma Orus" allow="clipboard-write"></iframe>
+
+<script>
+  // ===== LINK DELLA PIATTAFORMA - inizio =====
+  // Incollare qui il link /exec della piattaforma (lo stesso che si apre dal browser).
+  var URL_PIATTAFORMA = 'https://script.google.com/macros/s/AKfycbxEqoYtKs7sFAA12vlzfJ_s5rKCxa0FTsgBjd3Qs_xt9DhnIn-N0OZaz8w3UeXfG5KR/exec';
+  // ===== LINK DELLA PIATTAFORMA - fine =====
+
+  var frame = document.getElementById('piattaforma');
+  var schermo = document.getElementById('caricamento');
+  frame.addEventListener('load', function () { schermo.classList.add('nascosto'); });
+  // Se dopo 25 secondi non ha ancora caricato, toglie comunque la schermata di avvio
+  setTimeout(function () { schermo.classList.add('nascosto'); }, 25000);
+  frame.src = URL_PIATTAFORMA;
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(function () {});
+  }
+</script>
+</body>
+</html>
